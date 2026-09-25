@@ -12,7 +12,7 @@ const ruleId = Number(process.env.AGENT_RULE_ID ?? 1);
 const merchant = process.env.MERCHANT_ADDRESS!;
 
 const before = await readAllowance(merchant, wallet, ruleId);
-const url = `${origin}/api/data?symbol=XLM`;
+const url = `${origin}/api/data/crypto?symbol=XLM`;
 const first = await fetch(url);
 assert.equal(first.status, 402);
 const req = decodePaymentRequiredHeader(first.headers.get("PAYMENT-REQUIRED")!).accepts[0];

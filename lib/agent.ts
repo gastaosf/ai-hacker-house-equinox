@@ -1,4 +1,4 @@
-// The agent: Claude tool loop that buys quotes over x402 from a spend-capped smart account.
+// The agent: OpenAI tool loop that buys live data over x402 from a spend-capped smart account.
 import OpenAI from "openai";
 import { Keypair } from "@stellar/stellar-sdk";
 import {
@@ -9,16 +9,16 @@ import {
 import { contractErrorCode, readAllowance, toTusdc } from "./stellar";
 import { createSmartAccountPayment } from "./x402";
 import { publish, waitForReply } from "./ntfy";
-import { PRICE_TUSDC } from "./contracts";
+import { CATALOG, DEFAULT_TASK, entry, type Kind } from "./catalog";
 
 export type AgentEvent =
   | { t: "start"; wallet: string; ruleId: number }
   | { t: "say"; text: string }
-  | { t: "call"; symbol: string }
-  | { t: "402"; symbol: string; price: number }
-  | { t: "paid"; symbol: string; tx: string; quote: unknown }
-  | { t: "refused"; symbol: string; code: number | null }
-  | { t: "allowance"; limit: number; spent: number }
+  | { t: "call"; item: string; path: string }
+  | { t: "402"; item: string; price: number }
+  | { t: "paid"; item: string; price: number; tx: string; quote: { summary?: string } }
+  | { t: "refused"; item: string; code: number | null }
+  | { t: "allowance"; limit: number; spent: number; periodLedgers: number }
   | { t: "topup_request"; amount: number; reason: string }
   | { t: "topup_approved"; limit: number }
   | { t: "topup_declined" }
@@ -27,28 +27,27 @@ export type AgentEvent =
   | { t: "error"; text: string }
   | { t: "done" };
 
-export const ASSETS = ["XLM", "BTC", "ETH", "SOL", "AQUA", "USDC", "EURC", "PYUSD", "ADA", "DOT", "LINK", "AVAX"];
-const TASK = `Build a short market snapshot for these ${ASSETS.length} assets: ${ASSETS.join(", ")}. Get a quote for every one of them.`;
 
-const SYSTEM = `You are a research agent that pays for data. Every get_quote call costs ${PRICE_TUSDC} tUSDC, paid over x402 from your owner's smart wallet.
-Your spending is capped by an on-chain policy you cannot change. If get_quote reports ALLOWANCE_EXHAUSTED, call request_topup once with the smallest amount (in tUSDC) that covers the remaining quotes and a one-sentence reason addressed to your owner. If the owner declines, stop buying and report with what you have.
-Call get_quote for several assets in parallel when you can. When done, reply with the snapshot as a compact markdown table (asset, price, 24h change) followed by one line stating what you spent. Mention that prices are demo data.`;
+const PRICE_LIST = CATALOG.map((e) => `${e.kind} ${e.price}`).join(", ");
+const SYSTEM = `You are a research agent that pays for data. Prices per call in tUSDC: ${PRICE_LIST}. Paid over x402 from your owner's smart wallet.
+Your spending is capped by an on-chain policy you cannot change. If a data call reports ALLOWANCE_EXHAUSTED, call request_topup once with the smallest amount (in tUSDC) that covers the remaining items and a one-sentence reason addressed to your owner. If the owner declines, stop buying and report with what you have.
+Call several tools in parallel when you can. When done, reply with the briefing as one compact markdown table (item, type, value, change or conditions) followed by one line stating what you spent.`;
 
 const tools: OpenAI.Chat.ChatCompletionTool[] = [
-  {
+  ...CATALOG.map((e): OpenAI.Chat.ChatCompletionTool => ({
     type: "function",
     function: {
-      name: "get_quote",
-      description: `Buy the current quote for one asset symbol. Costs ${PRICE_TUSDC} tUSDC per call, paid automatically over x402.`,
+      name: e.tool,
+      description: `${e.description} Costs ${e.price} tUSDC per call, paid automatically over x402.`,
       strict: true,
       parameters: {
         type: "object",
-        properties: { symbol: { type: "string", description: "Ticker, e.g. XLM" } },
-        required: ["symbol"],
+        properties: { [e.param]: { type: "string", description: `e.g. ${e.example}` } },
+        required: [e.param],
         additionalProperties: false,
       },
     },
-  },
+  })),
   {
     type: "function",
     function: {
@@ -68,30 +67,33 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
   },
 ];
 
-type Ctx = { origin: string; wallet: string; ruleId: number; emit: (e: AgentEvent) => void };
+type Ctx = { origin: string; wallet: string; ruleId: number; task?: string; emit: (e: AgentEvent) => void };
 
 async function allowance(ctx: Ctx) {
   const a = await readAllowance(process.env.MERCHANT_ADDRESS!, ctx.wallet, ctx.ruleId);
-  ctx.emit({ t: "allowance", limit: toTusdc(a.limit), spent: toTusdc(a.spent) });
+  ctx.emit({ t: "allowance", limit: toTusdc(a.limit), spent: toTusdc(a.spent), periodLedgers: a.periodLedgers });
   return a;
 }
 
-async function getQuote(ctx: Ctx, symbol: string): Promise<string> {
+async function buy(ctx: Ctx, kind: Kind, item: string): Promise<string> {
   const agent = Keypair.fromSecret(process.env.AGENT_SECRET!);
-  const url = `${ctx.origin}/api/data?symbol=${encodeURIComponent(symbol)}`;
-  ctx.emit({ t: "call", symbol });
+  const { param } = entry(kind);
+  const path = `/api/data/${kind}?${param}=${encodeURIComponent(item)}`;
+  const url = ctx.origin + path;
+  ctx.emit({ t: "call", item, path });
   const first = await fetch(url);
   if (first.status !== 402) return `unexpected status ${first.status}`;
   const required = decodePaymentRequiredHeader(first.headers.get("PAYMENT-REQUIRED")!);
   const req = required.accepts[0];
-  ctx.emit({ t: "402", symbol, price: toTusdc(BigInt(req.amount)) });
+  const price = toTusdc(BigInt(req.amount));
+  ctx.emit({ t: "402", item, price });
 
   let payload;
   try {
     payload = await createSmartAccountPayment(req, ctx.wallet, ctx.ruleId, agent);
   } catch (e) {
     const code = contractErrorCode(String((e as Error).message));
-    ctx.emit({ t: "refused", symbol, code });
+    ctx.emit({ t: "refused", item, code });
     if (code === 3221) return "ALLOWANCE_EXHAUSTED: the on-chain spending limit refused this payment (SpendingLimitExceeded #3221). Nothing was charged.";
     throw e;
   }
@@ -99,7 +101,7 @@ async function getQuote(ctx: Ctx, symbol: string): Promise<string> {
   if (!paid.ok) return `payment failed: ${(await paid.json()).error}`;
   const quote = await paid.json();
   const settlement = decodePaymentResponseHeader(paid.headers.get("PAYMENT-RESPONSE")!);
-  ctx.emit({ t: "paid", symbol, tx: settlement.transaction, quote });
+  ctx.emit({ t: "paid", item, price, tx: settlement.transaction, quote });
   await allowance(ctx);
   return JSON.stringify(quote);
 }
@@ -109,7 +111,7 @@ async function requestTopup(ctx: Ctx, amount: number, reason: string): Promise<s
   ctx.emit({ t: "topup_request", amount, reason });
   const since = Math.floor(Date.now() / 1000);
   await publish({ type: "topup", amount, reason, wallet: ctx.wallet, ruleId: ctx.ruleId });
-  const reply = await waitForReply(since, 150_000, async () => (await readAllowance(
+  const reply = await waitForReply(since, ctx.wallet, 150_000, async () => (await readAllowance(
     process.env.MERCHANT_ADDRESS!, ctx.wallet, ctx.ruleId)).limit > before.limit);
   if (reply === "approved") {
     const after = await allowance(ctx);
@@ -130,7 +132,7 @@ export async function runAgent(ctx: Ctx) {
   const client = new OpenAI();
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: SYSTEM },
-    { role: "user", content: TASK },
+    { role: "user", content: ctx.task ?? DEFAULT_TASK },
   ];
   ctx.emit({ t: "start", wallet: ctx.wallet, ruleId: ctx.ruleId });
   await allowance(ctx);
@@ -152,15 +154,16 @@ export async function runAgent(ctx: Ctx) {
     for (const call of message.tool_calls) {
       if (call.type !== "function") continue;
       let content: string;
-      if (exhausted && call.function.name === "get_quote") {
+      const entry = CATALOG.find((e) => e.tool === call.function.name);
+      if (exhausted && entry) {
         // one refusal per batch is enough; the rest would be refused the same way
         messages.push({ role: "tool", tool_call_id: call.id, content: "SKIPPED: allowance exhausted (see previous result)." });
         continue;
       }
       try {
-        const input = JSON.parse(call.function.arguments) as { symbol?: string; amount?: number; reason?: string };
-        content = call.function.name === "get_quote"
-          ? await getQuote(ctx, String(input.symbol))
+        const input = JSON.parse(call.function.arguments) as Record<string, unknown>;
+        content = entry
+          ? await buy(ctx, entry.kind, String(input[entry.param]))
           : await requestTopup(ctx, Number(input.amount), String(input.reason));
       } catch (e) {
         content = `ERROR: ${(e as Error).message}`;

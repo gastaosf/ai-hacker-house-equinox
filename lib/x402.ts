@@ -2,8 +2,15 @@
 import { Keypair, contract, nativeToScVal, Address, xdr } from "@stellar/stellar-sdk";
 import { ExactStellarScheme as StellarFacilitatorScheme } from "@x402/stellar/exact/facilitator";
 import { createEd25519Signer } from "@x402/stellar";
-import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import {
+  decodePaymentSignatureHeader,
+  encodePaymentRequiredHeader,
+  encodePaymentResponseHeader,
+} from "@x402/core/http";
+import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402/core/types";
 import { PASSPHRASE, RPC_URL, server, signSmartEntry } from "./stellar";
+import { STROOPS } from "./contracts";
+import { entry, type Kind } from "./catalog";
 
 export const NETWORK = "stellar:testnet" as const;
 export const X402_VERSION = 2;
@@ -73,4 +80,57 @@ export function getFacilitator() {
       return t[0]?.switch().name === "scvSymbol" && t[0].sym().toString() === "transfer";
     }), ...rest);
   return (facilitator = f);
+}
+
+/** Paid data: rendered by the UI and read by the agent via `summary`. */
+export type PaidData = { summary: string; source: string } & Record<string, unknown>;
+
+/**
+ * Server: 402 → verify → produce data → settle. Settles only once the data exists,
+ * so an unknown item (produce → null) or a failing upstream never charges the payer.
+ */
+export async function paywall(req: Request, kind: Kind, description: string, produce: () => Promise<PaidData | null>) {
+  const requirements: PaymentRequirements = {
+    scheme: "exact",
+    network: NETWORK,
+    asset: process.env.NEXT_PUBLIC_TUSDC!,
+    payTo: process.env.MERCHANT_ADDRESS!,
+    amount: String(Math.round(entry(kind).price * STROOPS)),
+    maxTimeoutSeconds: 60,
+    extra: { areFeesSponsored: true },
+  };
+  const header = req.headers.get("PAYMENT-SIGNATURE");
+  if (!header) {
+    const body: PaymentRequired = {
+      x402Version: X402_VERSION,
+      error: "payment required",
+      resource: { url: req.url, description, mimeType: "application/json" },
+      accepts: [requirements],
+    };
+    return Response.json(body, { status: 402, headers: { "PAYMENT-REQUIRED": encodePaymentRequiredHeader(body) } });
+  }
+
+  const payload = decodePaymentSignatureHeader(header);
+  const facilitator = getFacilitator();
+  const verified = await facilitator.verify(payload, requirements);
+  if (!verified.isValid) return Response.json({ error: verified.invalidReason }, { status: 402 });
+
+  let data: PaidData | null;
+  try {
+    data = await produce();
+  } catch (e) {
+    return Response.json({ error: `upstream failed: ${(e as Error).message}. Nothing charged.` }, { status: 502 });
+  }
+  if (!data) return Response.json({ error: `not found: ${description}. Nothing charged.` }, { status: 404 });
+
+  const settled = await facilitator.settle(payload, requirements);
+  if (!settled.success) return Response.json({ error: settled.errorReason }, { status: 402 });
+  return Response.json(data, { headers: { "PAYMENT-RESPONSE": encodePaymentResponseHeader(settled) } });
+}
+
+/** fetch JSON or throw with the status — upstream failures become a 502 in paywall. */
+export async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(url, init);
+  if (!r.ok) throw new Error(`${new URL(url).host} ${r.status}`);
+  return r.json() as Promise<T>;
 }

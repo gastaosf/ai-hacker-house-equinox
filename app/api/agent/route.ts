@@ -11,14 +11,16 @@ export async function GET(req: Request) {
   const announced = await announcedWallet();
   const wallet = url.searchParams.get("wallet") || announced?.wallet || process.env.WALLET_ADDRESS;
   const ruleId = Number(url.searchParams.get("rule") ?? (announced && announced.wallet === wallet ? announced.ruleId : process.env.AGENT_RULE_ID ?? 1));
-  if (!wallet || !StrKey.isValidContract(wallet)) return Response.json({ error: "no wallet configured" }, { status: 400 });
+  const task = url.searchParams.get("task")?.trim().slice(0, 500) || undefined;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (e: AgentEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
       try {
-        await runAgent({ origin: url.origin, wallet, ruleId, emit });
+        // errors go on the tape too — an EventSource client can't read a 4xx body
+        if (!wallet || !StrKey.isValidContract(wallet)) throw new Error("No wallet yet. Open /approve on your phone to create one.");
+        await runAgent({ origin: url.origin, wallet, ruleId, task, emit });
       } catch (e) {
         emit({ t: "error", text: String((e as Error).message).slice(0, 300) });
       }

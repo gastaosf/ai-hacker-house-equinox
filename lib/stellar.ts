@@ -135,7 +135,7 @@ export const simulateRead = async (sourcePub: string, contractId: string, method
 export async function readAllowance(sourcePub: string, wallet: string, ruleId: number) {
   const d = await simulateRead(sourcePub, SPENDING_LIMIT_POLICY, "get_spending_limit_data",
     nativeToScVal(ruleId, { type: "u32" }), addr(wallet));
-  return { limit: BigInt(d.spending_limit), spent: BigInt(d.cached_total_spent) };
+  return { limit: BigInt(d.spending_limit), spent: BigInt(d.cached_total_spent), periodLedgers: Number(d.period_ledgers) };
 }
 
 export const toTusdc = (stroops: bigint) => Number(stroops) / 1e7;
