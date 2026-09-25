@@ -38,3 +38,11 @@ export async function announcedWallet(): Promise<{ wallet: string; ruleId: numbe
   }
   return found;
 }
+
+/** Which wallet the agent spends from. Precedence: ?wallet= override → wallet announced by the owner's phone → env fallback. */
+export async function resolveWallet(params: URLSearchParams) {
+  const announced = await announcedWallet();
+  const wallet = params.get("wallet") || announced?.wallet || process.env.WALLET_ADDRESS;
+  const ruleId = Number(params.get("rule") ?? (announced && announced.wallet === wallet ? announced.ruleId : process.env.AGENT_RULE_ID ?? 1));
+  return { wallet, ruleId };
+}

@@ -32,6 +32,17 @@ export default function Dashboard() {
     tape.current?.scrollTo({ top: tape.current.scrollHeight, behavior: "smooth" });
   }, [events]);
   useEffect(() => () => source.current?.close(), []);
+  // Show the on-chain allowance on load, not only during a run.
+  useEffect(() => {
+    fetch("/api/allowance", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((a) => {
+        if (!a) return;
+        setWallet((w) => w ?? a.wallet);
+        setAllowance((cur) => cur ?? { limit: a.limit, spent: a.spent, periodLedgers: a.periodLedgers });
+      })
+      .catch(() => {});
+  }, []);
 
   function run() {
     source.current?.close();
@@ -211,6 +222,7 @@ function Gauge({ allowance, status }: { allowance: Allowance | null; status: Sta
       </div>
       <p className="mt-2 font-mono text-[11px] text-muted-foreground">
         {paused ? "paused by owner · limit is 0" : "amber = what the agent can still spend · set by the owner, enforced on chain"}
+        {" · "}<a className="underline decoration-dotted hover:text-foreground" href="/approve">change allowance →</a>
       </p>
     </div>
   );

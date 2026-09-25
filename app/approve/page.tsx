@@ -37,6 +37,8 @@ export default function Approve() {
   const [period, setPeriod] = useState<Period>("day");
   // top-up form: the owner can approve a different amount than the agent asked for
   const [grant, setGrant] = useState("");
+  // allowance editor: null = untouched, shows the current on-chain limit
+  const [edit, setEdit] = useState<string | null>(null);
   const paused = limit?.limit === 0;
 
   async function refreshLimit(id: number) {
@@ -64,7 +66,7 @@ export default function Approve() {
         if (!restored) return setPhase({ k: "setup" });
         setWallet(kit.current.contractId!);
         setPhase({ k: "ready" });
-        refreshLimit(id).catch(() => {});
+        refreshLimit(id).catch(() => setTimeout(() => refreshLimit(id).catch(() => {}), 2000));
       } catch {
         setPhase({ k: "setup" });
       }
@@ -177,6 +179,19 @@ export default function Approve() {
     }
   }
 
+  // Owner sets the limit directly. The window (hour/day/week) is fixed at setup; spent-so-far still counts against it.
+  async function setAllowance() {
+    const tusdc = Number(edit);
+    if (!(tusdc >= 0) || edit === null || edit === "") return;
+    try {
+      await writeLimit(ruleId, BigInt(Math.round(tusdc * STROOPS)));
+      setEdit(null);
+      setPhase({ k: "ready" });
+    } catch (e) {
+      setPhase({ k: "error", msg: (e as Error).message });
+    }
+  }
+
   // Testnet only: mints 10 tUSDC into the wallet (the allowance caps spending; this is the money it spends)
   async function addFunds() {
     if (!wallet) return;
@@ -252,6 +267,28 @@ export default function Approve() {
             <span className={`size-2 rounded-full ${paused ? "bg-destructive" : "animate-pulse bg-success"}`} />
             {paused ? "Agent paused: every payment is refused on chain." : "Listening for requests from your agent…"}
           </p>
+          {wallet && (
+            <div className="rounded-lg border bg-card p-4 shadow-2xs">
+              <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Agent allowance</p>
+              <div className="flex items-stretch gap-2">
+                <label className="flex flex-1 items-baseline gap-1.5 rounded-md border px-3 focus-within:ring-2 focus-within:ring-ring/50">
+                  <input
+                    type="number" inputMode="decimal" min="0" step="0.1"
+                    value={edit ?? (limit ? String(limit.limit) : "")} onChange={(e) => setEdit(e.target.value)} placeholder="…"
+                    aria-label="New allowance in tUSDC" className="w-full bg-transparent py-2.5 font-serif text-3xl font-semibold tabular-nums outline-none"
+                  />
+                  <span className="text-sm text-muted-foreground">tUSDC</span>
+                </label>
+                <Button size="lg" className="h-auto px-5 font-semibold shadow-md" onClick={setAllowance}
+                  disabled={edit === null || edit === "" || !(Number(edit) >= 0) || Number(edit) === limit?.limit}>
+                  Set
+                </Button>
+              </div>
+              <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                {limit ? `${limit.spent.toFixed(2)} spent in the current window` : "reading current limit…"} · raise or lower it any time · signed with your passkey
+              </p>
+            </div>
+          )}
           {paused
             ? <Button size="lg" className="h-12 w-full text-base font-semibold shadow-md" onClick={resume}>Resume agent</Button>
             : <Button size="lg" variant="outline" className="h-12 w-full text-base" onClick={pause}>Pause agent</Button>}
