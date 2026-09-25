@@ -6,3 +6,5 @@ export const WEBAUTHN_VERIFIER = "CC7EKIHQP3TN4CARQDND6CEOY2UXLWWC2X5GHTD5NLAT7B
 export const SPENDING_LIMIT_POLICY = "CABXBYJNZ7IUW4G3D6BND5YCAQF3ASSDMDAOKQQ63UYFSO7WUU2TIP5G";
 export const RELAYER_URL = "https://smart-account-relayer-proxy.sdf-ecosystem.workers.dev";
 export const STROOPS = 10_000_000; // 1 tUSDC
+export const PRICE_TUSDC = 0.5; // per paid API call
+export const DAILY_ALLOWANCE_TUSDC = 2; // granted to the agent at wallet setup

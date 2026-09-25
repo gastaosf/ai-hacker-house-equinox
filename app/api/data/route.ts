@@ -6,8 +6,9 @@ import {
 } from "@x402/core/http";
 import type { PaymentRequired, PaymentRequirements } from "@x402/core/types";
 import { getFacilitator, NETWORK, X402_VERSION } from "@/lib/x402";
+import { PRICE_TUSDC, STROOPS } from "@/lib/contracts";
 
-const PRICE_STROOPS = "2500000"; // 0.25 tUSDC per call
+const PRICE_STROOPS = String(PRICE_TUSDC * STROOPS);
 
 function requirements(): PaymentRequirements {
   return {

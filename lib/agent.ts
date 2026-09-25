@@ -9,6 +9,7 @@ import {
 import { contractErrorCode, readAllowance, toTusdc } from "./stellar";
 import { createSmartAccountPayment } from "./x402";
 import { publish, waitForReply } from "./ntfy";
+import { PRICE_TUSDC } from "./contracts";
 
 export type AgentEvent =
   | { t: "start"; wallet: string; ruleId: number }
@@ -21,6 +22,7 @@ export type AgentEvent =
   | { t: "topup_request"; amount: number; reason: string }
   | { t: "topup_approved"; limit: number }
   | { t: "topup_declined" }
+  | { t: "topup_timeout" }
   | { t: "report"; text: string }
   | { t: "error"; text: string }
   | { t: "done" };
@@ -28,7 +30,7 @@ export type AgentEvent =
 export const ASSETS = ["XLM", "BTC", "ETH", "SOL", "AQUA", "USDC", "EURC", "PYUSD", "ADA", "DOT", "LINK", "AVAX"];
 const TASK = `Build a short market snapshot for these ${ASSETS.length} assets: ${ASSETS.join(", ")}. Get a quote for every one of them.`;
 
-const SYSTEM = `You are a research agent that pays for data. Every get_quote call costs 0.25 tUSDC, paid over x402 from your owner's smart wallet.
+const SYSTEM = `You are a research agent that pays for data. Every get_quote call costs ${PRICE_TUSDC} tUSDC, paid over x402 from your owner's smart wallet.
 Your spending is capped by an on-chain policy you cannot change. If get_quote reports ALLOWANCE_EXHAUSTED, call request_topup once with the smallest amount (in tUSDC) that covers the remaining quotes and a one-sentence reason addressed to your owner. If the owner declines, stop buying and report with what you have.
 Call get_quote for several assets in parallel when you can. When done, reply with the snapshot as a compact markdown table (asset, price, 24h change) followed by one line stating what you spent. Mention that prices are demo data.`;
 
@@ -37,7 +39,7 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_quote",
-      description: "Buy the current quote for one asset symbol. Costs 0.25 tUSDC per call, paid automatically over x402.",
+      description: `Buy the current quote for one asset symbol. Costs ${PRICE_TUSDC} tUSDC per call, paid automatically over x402.`,
       strict: true,
       parameters: {
         type: "object",
@@ -114,8 +116,12 @@ async function requestTopup(ctx: Ctx, amount: number, reason: string): Promise<s
     ctx.emit({ t: "topup_approved", limit: toTusdc(after.limit) });
     return `APPROVED: owner signed with their passkey; allowance is now ${toTusdc(after.limit)} tUSDC (spent ${toTusdc(after.spent)}). Continue.`;
   }
-  ctx.emit({ t: "topup_declined" });
-  return reply === "declined" ? "DECLINED by owner. Stop buying." : "No answer from owner in time. Stop buying.";
+  if (reply === "declined") {
+    ctx.emit({ t: "topup_declined" });
+    return "DECLINED by owner. Stop buying.";
+  }
+  ctx.emit({ t: "topup_timeout" });
+  return "No answer from owner in time. Stop buying.";
 }
 
 export const MODEL = "gpt-5.4-mini";

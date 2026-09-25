@@ -22,3 +22,16 @@ export async function waitForReply(since: number, timeoutMs: number, approvedOnC
   }
   return "timeout" as const;
 }
+
+/** The wallet the owner's phone announced most recently on /approve (ntfy keeps messages ~12h). */
+export async function announcedWallet(): Promise<{ wallet: string; ruleId: number } | null> {
+  const r = await fetch(`${topicUrl()}/json?poll=1&since=12h`, { cache: "no-store" });
+  let found: { wallet: string; ruleId: number } | null = null;
+  for (const line of (await r.text()).split("\n").filter(Boolean)) {
+    try {
+      const m = JSON.parse(JSON.parse(line).message);
+      if (m.type === "wallet") found = { wallet: String(m.wallet), ruleId: Number(m.ruleId) };
+    } catch { /* not ours */ }
+  }
+  return found;
+}

@@ -7,7 +7,7 @@ import { Buffer } from "buffer";
 import type { SmartAccountKit } from "smart-account-kit";
 import { Button } from "@/components/ui/button";
 import {
-  ACCOUNT_WASM_HASH, ED25519_VERIFIER, RELAYER_URL, RPC_URL, SPENDING_LIMIT_POLICY, STROOPS, WEBAUTHN_VERIFIER,
+  ACCOUNT_WASM_HASH, DAILY_ALLOWANCE_TUSDC, ED25519_VERIFIER, RELAYER_URL, RPC_URL, SPENDING_LIMIT_POLICY, STROOPS, WEBAUTHN_VERIFIER,
 } from "@/lib/contracts";
 
 const TOPIC = process.env.NEXT_PUBLIC_NTFY_TOPIC!;
@@ -61,10 +61,15 @@ export default function Approve() {
     })();
   }, []);
 
+  // Tell the agent which wallet to spend from (it reads the latest announcement).
+  useEffect(() => {
+    if (wallet) ntfy({ type: "wallet", wallet, ruleId });
+  }, [wallet, ruleId]);
+
   // Listen for the agent's requests once a wallet is connected.
   useEffect(() => {
     if (!wallet) return;
-    const es = new EventSource(`https://ntfy.sh/${TOPIC}/sse`);
+    const es = new EventSource(`https://ntfy.sh/${TOPIC}/sse?since=2m`) // also catch a request sent just before the page opened;
     es.onmessage = (m) => {
       try {
         const msg = JSON.parse(JSON.parse(m.data).message);
@@ -86,7 +91,7 @@ export default function Approve() {
       const contractId = created.contractId;
 
       setPhase({ k: "working", step: "Granting the agent a 2 tUSDC/day allowance…" });
-      const params = k.convertPolicyParams("spending_limit", createSpendingLimitParams(BigInt(2 * STROOPS), LEDGERS_PER_DAY));
+      const params = k.convertPolicyParams("spending_limit", createSpendingLimitParams(BigInt(DAILY_ALLOWANCE_TUSDC * STROOPS), LEDGERS_PER_DAY));
       const tx = await k.rules.add(
         createCallContractContext(TUSDC),
         "agent",
@@ -136,13 +141,16 @@ export default function Approve() {
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 py-8">
-      <header className="flex items-baseline justify-between">
-        <h1 className="font-heading text-4xl">Allowance</h1>
-        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground">owner</span>
+      <header className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-8 place-items-center rounded-md bg-primary font-serif text-lg font-semibold text-primary-foreground shadow-sm">A</span>
+          <h1 className="font-semibold tracking-tight">Allowance</h1>
+        </div>
+        <span className="rounded-md border bg-card px-2 py-1 font-mono text-[11px] text-muted-foreground shadow-2xs">owner · phone</span>
       </header>
 
       {wallet && (
-        <div className="rounded-lg border border-border bg-card/60 p-4 font-mono text-xs text-muted-foreground">
+        <div className="rounded-lg border border-border bg-card shadow-md p-4 font-mono text-xs text-muted-foreground">
           <div className="flex justify-between gap-4"><span>wallet</span><span className="select-all break-all text-right text-foreground">{wallet}</span></div>
           <div className="flex justify-between"><span>agent allowance</span>
             <span className="text-foreground">{limit ? `${(limit.limit - limit.spent).toFixed(2)} of ${limit.limit.toFixed(2)} left` : "…"}</span>
@@ -156,26 +164,26 @@ export default function Approve() {
       {phase.k === "setup" && (
         <section className="space-y-4">
           <p>One-time setup: this phone becomes the owner of a smart wallet on Stellar testnet. Your passkey is the only key that can change the agent’s allowance.</p>
-          <Button size="lg" className="w-full" onClick={setup}>Create wallet with passkey</Button>
+          <Button size="lg" className="h-12 w-full text-base font-semibold shadow-md" onClick={setup}>Create wallet with passkey</Button>
         </section>
       )}
 
       {phase.k === "working" && (
-        <p className="flex items-center gap-3 font-mono text-sm"><span className="size-2 animate-pulse rounded-full bg-signal" />{phase.step}</p>
+        <p className="flex items-center gap-3 font-mono text-sm"><span className="size-2 animate-pulse rounded-full bg-primary" />{phase.step}</p>
       )}
 
       {phase.k === "ready" && (
         <p className="flex items-center gap-3 font-mono text-sm text-muted-foreground">
-          <span className="size-2 animate-pulse rounded-full bg-ok" /> Listening for requests from your agent…
+          <span className="size-2 animate-pulse rounded-full bg-success" /> Listening for requests from your agent…
         </p>
       )}
 
       {phase.k === "request" && (
-        <section className="print-in space-y-5 rounded-xl border-2 border-signal bg-signal/10 p-5">
-          <p className="font-mono text-xs uppercase tracking-[0.25em] text-signal">Your agent is out of allowance</p>
-          <p className="font-heading text-6xl">+{phase.req.amount} <span className="text-2xl text-muted-foreground">tUSDC</span></p>
+        <section className="print-in space-y-5 rounded-xl border-2 border-primary bg-accent text-accent-foreground p-5">
+          <p className="font-mono text-xs uppercase tracking-[0.25em] text-primary">Your agent is out of allowance</p>
+          <p className="font-serif text-6xl font-semibold tracking-tight">+{phase.req.amount} <span className="text-2xl text-muted-foreground">tUSDC</span></p>
           <p className="text-lg italic">“{phase.req.reason}”</p>
-          <Button size="lg" className="h-14 w-full bg-signal text-lg text-black hover:bg-signal/90" onClick={() => approve(phase.req)}>
+          <Button size="lg" className="h-14 w-full text-lg font-semibold shadow-md" onClick={() => approve(phase.req)}>
             Approve with passkey
           </Button>
           <Button size="lg" variant="ghost" className="w-full" onClick={decline}>Decline</Button>
@@ -184,7 +192,7 @@ export default function Approve() {
 
       {phase.k === "approved" && (
         <section className="space-y-4 text-center">
-          <span className="stamp text-2xl text-ok">Approved</span>
+          <span className="stamp text-2xl text-success">Approved</span>
           <p className="font-mono text-sm">New limit {phase.limit.toFixed(2)} tUSDC</p>
           <a className="font-mono text-xs underline" href={`https://stellar.expert/explorer/testnet/tx/${phase.hash}`} target="_blank">view transaction ↗</a>
           <Button variant="ghost" className="w-full" onClick={() => setPhase({ k: "ready" })}>Done</Button>
@@ -193,7 +201,7 @@ export default function Approve() {
 
       {phase.k === "error" && (
         <section className="space-y-3">
-          <p className="text-deny">Something went wrong: {phase.msg}</p>
+          <p className="text-destructive">Something went wrong: {phase.msg}</p>
           <Button variant="outline" onClick={() => setPhase(wallet ? { k: "ready" } : { k: "setup" })}>Back</Button>
         </section>
       )}
