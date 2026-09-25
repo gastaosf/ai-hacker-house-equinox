@@ -31,6 +31,7 @@ export type AgentEvent =
 const PRICE_LIST = CATALOG.map((e) => `${e.kind} ${e.price}`).join(", ");
 const SYSTEM = `You are a research agent that pays for data. Prices per call in tUSDC: ${PRICE_LIST}. Paid over x402 from your owner's smart wallet.
 Your spending is capped by an on-chain policy you cannot change. If a data call reports ALLOWANCE_EXHAUSTED, call request_topup once with the smallest amount (in tUSDC) that covers the remaining items and a one-sentence reason addressed to your owner. If the owner declines, stop buying and report with what you have.
+If a data call reports WALLET_EMPTY, the wallet itself has no tUSDC left: do not request a top-up (a higher allowance cannot help), stop buying, and report with what you have plus one line telling the owner to add funds on the owner page.
 Call several tools in parallel when you can. When done, reply with the briefing as one compact markdown table (item, type, value, change or conditions) followed by one line stating what you spent.`;
 
 const tools: OpenAI.Chat.ChatCompletionTool[] = [
@@ -95,6 +96,8 @@ async function buy(ctx: Ctx, kind: Kind, item: string): Promise<string> {
     const code = contractErrorCode(String((e as Error).message));
     ctx.emit({ t: "refused", item, code });
     if (code === 3221) return "ALLOWANCE_EXHAUSTED: the on-chain spending limit refused this payment (SpendingLimitExceeded #3221). Nothing was charged.";
+    // token contract, not the policy: the wallet holds less than the price
+    if (code === 10) return "WALLET_EMPTY: the wallet's tUSDC balance is too low to pay (token error #10). Nothing was charged.";
     throw e;
   }
   const paid = await fetch(url, { headers: { "PAYMENT-SIGNATURE": encodePaymentSignatureHeader(payload) } });
@@ -150,14 +153,14 @@ export async function runAgent(ctx: Ctx) {
 
     messages.push(message);
     // sequential on purpose: one wallet, one payment at a time, readable log
-    let exhausted = false;
+    let exhausted: "ALLOWANCE_EXHAUSTED" | "WALLET_EMPTY" | null = null;
     for (const call of message.tool_calls) {
       if (call.type !== "function") continue;
       let content: string;
       const entry = CATALOG.find((e) => e.tool === call.function.name);
       if (exhausted && entry) {
         // one refusal per batch is enough; the rest would be refused the same way
-        messages.push({ role: "tool", tool_call_id: call.id, content: "SKIPPED: allowance exhausted (see previous result)." });
+        messages.push({ role: "tool", tool_call_id: call.id, content: `SKIPPED: ${exhausted} (see previous result).` });
         continue;
       }
       try {
@@ -168,7 +171,8 @@ export async function runAgent(ctx: Ctx) {
       } catch (e) {
         content = `ERROR: ${(e as Error).message}`;
       }
-      if (content.startsWith("ALLOWANCE_EXHAUSTED")) exhausted = true;
+      if (content.startsWith("ALLOWANCE_EXHAUSTED")) exhausted = "ALLOWANCE_EXHAUSTED";
+      if (content.startsWith("WALLET_EMPTY")) exhausted = "WALLET_EMPTY";
       messages.push({ role: "tool", tool_call_id: call.id, content });
     }
   }

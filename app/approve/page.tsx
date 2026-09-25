@@ -177,6 +177,19 @@ export default function Approve() {
     }
   }
 
+  // Testnet only: mints 10 tUSDC into the wallet (the allowance caps spending; this is the money it spends)
+  async function addFunds() {
+    if (!wallet) return;
+    try {
+      setPhase({ k: "working", step: "Adding 10 test USDC…" });
+      const r = await fetch("/api/fund", { method: "POST", body: JSON.stringify({ wallet }) });
+      if (!r.ok) throw new Error((await r.json()).error);
+      setPhase({ k: "ready" });
+    } catch (e) {
+      setPhase({ k: "error", msg: (e as Error).message });
+    }
+  }
+
   function decline() {
     if (!wallet) return;
     ntfy({ type: "declined", wallet });
@@ -242,6 +255,7 @@ export default function Approve() {
           {paused
             ? <Button size="lg" className="h-12 w-full text-base font-semibold shadow-md" onClick={resume}>Resume agent</Button>
             : <Button size="lg" variant="outline" className="h-12 w-full text-base" onClick={pause}>Pause agent</Button>}
+          <Button size="lg" variant="ghost" className="w-full" onClick={addFunds}>Add 10 test USDC to the wallet</Button>
         </section>
       )}
 

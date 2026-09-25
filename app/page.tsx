@@ -45,7 +45,7 @@ export default function Dashboard() {
       if (e.t === "start") setWallet(e.wallet);
       if (e.t === "allowance") setAllowance({ limit: e.limit, spent: e.spent, periodLedgers: e.periodLedgers });
       if (e.t === "paid") setStage((s) => (s === 0 ? 1 : s));
-      if (e.t === "refused") setStage(2);
+      if (e.t === "refused" && e.code === 3221) setStage(2);
       if (e.t === "topup_request") { setStage(3); setStatus("waiting"); }
       if (e.t === "topup_approved" || e.t === "topup_declined" || e.t === "topup_timeout") setStatus("running");
       if (e.t === "done") { setStatus("done"); es.close(); return; }
@@ -231,10 +231,18 @@ function Line({ e }: { e: AgentEvent }) {
         </p>
       );
     case "refused":
+      if (e.code === 10) return (
+        <div className={`${row} my-5 text-center`}>
+          <span className="stamp text-lg text-destructive">Wallet empty</span>
+          <p className="mt-2 text-xs text-muted-foreground">{e.item}: #10 tUSDC balance too low · nothing charged · add funds on /approve</p>
+        </div>
+      );
       return (
         <div className={`${row} my-5 text-center`}>
           <span className="stamp text-lg text-destructive">Refused by chain</span>
-          <p className="mt-2 text-xs text-muted-foreground">{e.item}: #{e.code} SpendingLimitExceeded · nothing charged</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {e.item}: #{e.code}{e.code === 3221 ? " SpendingLimitExceeded" : ""} · nothing charged
+          </p>
         </div>
       );
     case "topup_request":
