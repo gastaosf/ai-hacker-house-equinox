@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Allowance logo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+<style>
+  /* 512×512 mark. Screenshot the square, or open with a 512×512 viewport. */
+  :root { --amber: #f3a20b; --ink: #000; }
+  html, body { margin: 0; background: transparent; }
+  body { display: grid; place-items: center; min-height: 100vh; }
+  .mark {
+    width: 512px; height: 512px;
+    display: grid; place-items: center;
+    background: var(--amber);
+    border-radius: 96px;               /* same 3:16 ratio as the 8px-radius 32px mark in the app */
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, serif;
+    font-weight: 600; font-size: 352px; line-height: 1;
+    letter-spacing: -0.02em;
+    user-select: none;
+  }
+  .mark span { transform: translateY(-4%); }  /* optical centre for the serif A */
+</style>
+</head>
+<body>
+  <div class="mark" role="img" aria-label="Allowance"><span>A</span></div>
+</body>
+</html>

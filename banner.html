@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Allowance banner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&family=Source+Serif+4:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+<style>
+  /* 1500×500 banner. Screenshot the frame, or open with a 1500×500 viewport. */
+  :root {
+    --amber: #f3a20b; --ink: #2c2c2c; --muted: #6b6f7a; --line: #e5e6ea;
+    --paper: #fff; --accent: #fdf6e3; --accent-ink: #8a4b0e; --red: #d93a2f; --green: #2f8f5b;
+  }
+  html, body { margin: 0; background: #fff; }
+  body { display: grid; place-items: center; min-height: 100vh; font-family: Inter, system-ui, sans-serif; color: var(--ink); }
+
+  .frame {
+    position: relative; width: 1500px; height: 500px; overflow: hidden; background: #fff;
+    background-image: radial-gradient(var(--line) 1.2px, transparent 1.2px);
+    background-size: 22px 22px; background-position: -11px -11px;
+    display: grid; grid-template-columns: 1fr 460px; align-items: center; padding: 0 96px; box-sizing: border-box;
+  }
+
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .mark {
+    width: 44px; height: 44px; display: grid; place-items: center; border-radius: 9px;
+    background: var(--amber); color: #000; font: 600 28px/1 "Source Serif 4", Georgia, serif;
+  }
+  .brand b { font-weight: 600; font-size: 22px; letter-spacing: -0.01em; }
+
+  h1 { margin: 0; font: 600 66px/1.02 "Source Serif 4", Georgia, serif; letter-spacing: -0.02em; max-width: 12ch; }
+  h1 em { color: var(--amber); }
+  p.sub { margin: 18px 0 0; font-size: 20px; line-height: 1.4; color: var(--muted); max-width: 30ch; }
+
+  .chips { display: flex; gap: 10px; margin-top: 24px; font: 13px/1 "JetBrains Mono", monospace; }
+  .chips span { border: 1px solid var(--line); background: #fff; border-radius: 7px; padding: 8px 10px; color: var(--muted); }
+
+  /* receipt */
+  .receipt-wrap { filter: drop-shadow(0 0 1px rgba(0,0,0,.28)) drop-shadow(0 14px 20px rgba(0,0,0,.12)); transform: rotate(-2deg); }
+  .receipt {
+    width: 420px; background: var(--paper); border-radius: 10px 10px 0 0; padding: 22px 26px 34px; box-sizing: border-box;
+    font: 15px/26px "JetBrains Mono", monospace;
+    background-image: repeating-linear-gradient(0deg, transparent 0 25px, rgba(0,0,0,.045) 25px 26px);
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+            mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 14px 100%;
+  }
+  .receipt .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px dashed var(--line); padding-bottom: 10px; margin-bottom: 10px; }
+  .receipt .head b { letter-spacing: .3em; font-size: 14px; }
+  .receipt .head small { color: var(--muted); font-size: 11px; }
+  .receipt .row { display: flex; justify-content: space-between; gap: 12px; }
+  .receipt .row b { font-weight: 700; }
+  .receipt .row small { color: var(--muted); font-size: 12px; }
+  .receipt .dim { color: var(--muted); }
+  .stamp {
+    display: inline-block; margin: 8px 0; padding: 3px 10px; border: 3px solid currentColor; border-radius: 6px;
+    font-weight: 700; letter-spacing: .12em; text-transform: uppercase; font-size: 14px; line-height: 1.4;
+    transform: rotate(-6deg);
+  }
+  .ask { background: var(--accent); color: var(--accent-ink); border-left: 4px solid var(--amber); padding: 4px 10px; margin: 6px 0; font-size: 13px; line-height: 20px; border-radius: 4px; }
+  .total { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; font-weight: 700; }
+  .center { text-align: center; }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div>
+      <div class="brand"><span class="mark">A</span><b>Allowance</b></div>
+      <h1>An AI agent with an <em>allowance</em>.</h1>
+      <p class="sub">It pays for every API call by itself. The blockchain caps what it can spend. When it runs dry, it has to ask you.</p>
+      <div class="chips"><span>Stellar</span><span>x402</span><span>Smart account</span><span>Passkey</span></div>
+    </div>
+
+    <div class="receipt-wrap">
+      <div class="receipt">
+        <div class="head"><b>AGENT RECEIPT</b><small>/api/data/*</small></div>
+        <div class="row"><b>✓ BTC · $83,924 (−0.3%)</b><small>tx 84fa0…</small></div>
+        <div class="row"><b>✓ NVDA · $224.58</b><small>tx 305a6…</small></div>
+        <div class="row"><b>✓ Lisbon · 28°C, cloudy</b><small>tx 7e347…</small></div>
+        <div class="dim">GET /api/data/stock?symbol=AAPL</div>
+        <div class="dim">&nbsp;&nbsp;↳ 402 Payment Required · 1 tUSDC</div>
+        <div class="center"><span class="stamp" style="color:var(--red)">Refused by chain</span></div>
+        <div class="ask">→ asks owner for +1.5 tUSDC<br><i>“Two items left for your briefing.”</i></div>
+        <div class="center"><span class="stamp" style="color:var(--green)">Approved · passkey</span></div>
+        <div class="row"><b>✓ AAPL · $335.92</b><small>tx 2611…</small></div>
+        <div class="total"><span>4 paid calls</span><span>TOTAL 2.10 tUSDC</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
